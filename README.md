@@ -50,15 +50,15 @@ source env/bin/activate
 pip install--no-index--upgrade pip
 ```
 
-Enter WandB API Key:
-```
-WANDB__SERVICE_WAIT=300 wandb login API-KEY
-```
-
 Install requirements:
 ```
 cd SWE-PINN
 pip install -r requirements.txt
+```
+
+Enter WandB API Key:
+```
+WANDB__SERVICE_WAIT=300 wandb login API-KEY
 ```
 
 ## Starting a training run
@@ -85,7 +85,7 @@ To start training:
 sbatch scripts/train_swe_hump.sh
 ```
 
-Since most of DRAC's clusters are offline, all training runs are offline runs for WandB tracking. Once training is over, the outfile will contain the line needed to sync the run to your WandB account.
+Since most of DRAC's clusters are offline, all training runs are offline runs for WandB tracking. You can monitor when the job ends with `sq`. Once training is over, the outfile will contain the line needed to sync the run to your WandB account.
 ```
 nano outfiles/swe.out
 ```
