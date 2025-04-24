@@ -1,0 +1,119 @@
+import os
+import sys
+import platform
+
+# Deterministic
+# os.environ["XLA_FLAGS"] = "--xla_gpu_deterministic_reductions --xla_gpu_autotune_level=0"
+os.environ["TF_CUDNN_DETERMINISTIC"] = "1"  # DETERMINISTIC
+os.environ["WANDB__SERVICE_WAIT"] = "120"
+
+from absl import app
+from absl import flags
+from absl import logging
+
+from ml_collections import config_flags, config_dict
+import ml_collections
+
+import jax, wandb
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(script_dir)
+# Add project root path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jaxpi.logging import Logger
+
+import train
+import eval
+
+FLAGS = flags.FLAGS
+
+workdir = os.path.dirname(os.path.abspath(__file__))
+flags.DEFINE_string("workdir", workdir, "Directory to store model data.")
+
+config_flags.DEFINE_config_file(
+    "config",
+    # "./configs/sweep_pirate_rad.py",
+    # "./configs/sweep_default_rad.py",
+    "./configs/sweep_plain_rad_kc.py",
+    "File path to the training hyperparameter configuration.",
+    # lock_config=True,
+)
+
+def main(argv):
+    config = FLAGS.config
+    workdir = FLAGS.workdir
+
+    logger = Logger()
+    logger.info(f"Sweep main script start")
+
+    sweep_config = {
+        "method": "grid",  # "bayes", "grid", "random"
+        "name": "sweep_rad_plain_kc",
+        "metric": {"goal": "minimize", "name": "l2_u_error"},
+        # "early_terminate": {
+        #     "type": "hyperband",  # Optional: early stopping with HyperBand strategy
+        #     "min_iter": 5000,    # Min epochs for each trial before pruning
+        # },
+    }
+
+    parameters_dict = {
+        # "batch_size": {"values": [1024, 2048, 4096, 8192]},
+        # "use_rad": {"values": [True, False]},
+        # "rad_update": {"values": [2,5,10,25,50]}
+        "rad_k": {"values": [0.5, 1.0, 1.5, 2.0]},
+        "rad_c": {"values": [0.5, 1.0, 2.0, 4.0, 8.0]}
+    }
+
+    sweep_config["parameters"] = parameters_dict
+
+    def train_sweep():
+        # Initialize logger
+        logger = Logger()
+
+        config = FLAGS.config
+
+        # Find out if running on pc for dubugging or on HPC without internet access
+        if 'microsoft' in platform.uname().release.lower():
+            mode = "online"
+        else:
+            mode = "offline"
+        mode = "online" # On Cedar HPC with internet access
+
+        logger.info(f"Initializing wandb sweep run")
+        wandb.init(project=config.wandb.project, name=config.wandb.name, mode=mode)
+        logger.info(f"wandb sweep run initialized {mode}")
+
+        sweep_config = wandb.config
+
+        # Update config with sweep parameters
+        # config.training.batch_size_per_device = sweep_config.batch_size
+        # config.weighting.use_rad = sweep_config.use_rad
+        # config.weighting.rad_update_every_steps = sweep_config.rad_update
+        config.weighting.rad_k = sweep_config.rad_k
+        config.weighting.rad_c = sweep_config.rad_c
+
+        config.arch.pi_init = (
+            None  # Reset pi_init every sweep otherwise it will be overwritten!!!
+        )
+
+        train.train_and_evaluate(config, workdir)
+        eval.evaluate(config, workdir)
+
+        config.transfer.s2s_pi_init = True
+
+    logger.info(f"Initializing wandb sweep id")
+    sweep_id = wandb.sweep(
+        sweep_config,
+        project=config.wandb.project,
+    )
+
+    logger.info(f"Initializing wandb sweep agent")
+    wandb.agent(sweep_id, function=train_sweep)
+
+
+if __name__ == "__main__":
+    flags.mark_flags_as_required(["config", "workdir"])
+    app.run(main)
