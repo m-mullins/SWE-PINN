@@ -79,10 +79,10 @@ def get_config():
 
     # Training
     config.training = training = ml_collections.ConfigDict()
-    training.max_steps = 60000              # 20000
-    training.batch_size_per_device = 2048   # 2048
+    training.max_steps = 30000              # 20000
+    training.batch_size_per_device = 4096   # 2048
     training.s2s = True                     # Sequence to sequence learning
-    training.num_time_windows = 1           # For seq2seq
+    training.num_time_windows = 2           # For seq2seq
     training.g_schedule = None              # Increase g during training according to a schedule "step", "sigmoid" or None
     training.g_min = 1.0                    # Min value of g for the schedule
     training.ratio = 1                      # Downsampling ratio for l2 eval ratio during training

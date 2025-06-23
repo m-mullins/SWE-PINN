@@ -29,8 +29,8 @@ flags.DEFINE_string("workdir", workdir, "Directory to store model data.")
 
 config_flags.DEFINE_config_file(
     "config",
-    "./configs/plain.py",
-    # "./configs/default.py",
+    # "./configs/plain.py",
+    "./configs/default.py",
     # "./configs/pirate.py",
     # "./configs/default_no_cas.py",
     # "./configs/sota_pirate.py",

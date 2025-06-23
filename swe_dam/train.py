@@ -10,7 +10,7 @@ import jax
 import jax.numpy as jnp
 from jax import random, vmap, pmap, local_device_count
 from jax.tree_util import tree_map
-
+from flax import jax_utils
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -26,86 +26,7 @@ from jaxpi.samplers import UniformSampler, BaseSampler, SpaceSampler, TimeSpaceS
 from jaxpi.logging import Logger
 from jaxpi.utils import save_checkpoint, restore_checkpoint
 
-# from utils import get_dataset, get_fine_mesh, parabolic_inflow
 from utils import get_dataset, convert_config_to_dict, get_bc_coords, g_schedule_step, g_schedule_sigmoid, count_params
-
-
-# class ICSampler(SpaceSampler):
-#     def __init__(self, u, v, h, coords, batch_size, rng_key=random.PRNGKey(1234)):
-#         super().__init__(coords, batch_size, rng_key)
-
-#         self.u = u
-#         self.v = v
-#         self.h = h
-
-#     @partial(pmap, static_broadcasted_argnums=(0,))
-#     def data_generation(self, key):
-#         "Generates data containing batch_size samples"
-#         idx = random.choice(key, self.coords.shape[0], shape=(self.batch_size,))
-
-#         coords_batch = self.coords[idx, :]
-
-#         u_batch = self.u[idx]
-#         v_batch = self.v[idx]
-#         h_batch = self.h[idx]
-
-#         batch = (coords_batch, u_batch, v_batch, h_batch)
-
-#         return batch
-
-
-# class ResSampler(BaseSampler):
-#     def __init__(
-#         self,
-#         temporal_dom,
-#         coarse_coords,
-#         fine_coords,
-#         batch_size,
-#         rng_key=random.PRNGKey(1234),
-#     ):
-#         super().__init__(batch_size, rng_key)
-
-#         self.temporal_dom = temporal_dom
-
-#         self.coarse_coords = coarse_coords
-#         self.fine_coords = fine_coords
-
-#     @partial(pmap, static_broadcasted_argnums=(0,))
-#     def data_generation(self, key):
-#         "Generates data containing batch_size samples"
-#         subkeys = random.split(key, 4)
-
-#         temporal_batch = random.uniform(
-#             subkeys[0],
-#             shape=(2 * self.batch_size, 1),
-#             minval=self.temporal_dom[0],
-#             maxval=self.temporal_dom[1],
-#         )
-
-#         coarse_idx = random.choice(
-#             subkeys[1],
-#             self.coarse_coords.shape[0],
-#             shape=(self.batch_size,),
-#             replace=True,
-#         )
-
-#         fine_idx = random.choice(
-#             subkeys[2],
-#             self.fine_coords.shape[0],
-#             shape=(self.batch_size,),
-#             replace=True,
-#         )
-
-#         coarse_spatial_batch = self.coarse_coords[coarse_idx, :]
-#         fine_spatial_batch = self.fine_coords[fine_idx, :]
-#         spatial_batch = jnp.vstack([coarse_spatial_batch, fine_spatial_batch])
-#         spatial_batch = random.permutation(
-#             subkeys[3], spatial_batch
-#         )  # mix the coarse and fine coordinates
-
-#         batch = jnp.concatenate([temporal_batch, spatial_batch], axis=1)
-
-#         return batch
 
 
 def train_one_window(config, workdir, model, res_sampler, idx, u_ref, v_ref, h_ref):
@@ -347,14 +268,9 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
             if os.path.exists(ckpt_path):
                     state = restore_checkpoint(model.state, ckpt_path, step=None) # Load latest checkpoint for tw
 
-                    # Add an additional array embedding to every element
-                    def add_array_embedding(x):
-                        return jnp.array([x])
-                    
-                    params = {'params':None}
-                    params['params'] = jax.tree_map(add_array_embedding, state.params['params'])
-                    weights = jax.tree_map(add_array_embedding, state.weights)
-                    model.state = model.state.replace(params=params, weights=weights)
+                    state = jax_utils.replicate(state)
+
+                    model.state = model.state.replace(params=state.params, weights=state.weights)
 
         # Train model for the current time window
         model = train_one_window(config, workdir, model, res_sampler, idx, u, v, h)
@@ -364,9 +280,9 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
             state = jax.device_get(jax.tree_util.tree_map(lambda x: x[0], model.state))
             params = state.params
 
-            u0 = model.u0_pred_fn(params, t_star[num_time_steps * (idx+1)], x_star, y_star)
-            v0 = model.v0_pred_fn(params, t_star[num_time_steps * (idx+1)], x_star, y_star)
-            h0 = model.h0_pred_fn(params, t_star[num_time_steps * (idx+1)], x_star, y_star)
+            u0 = model.u0_pred_fn(params, t_star[num_time_steps], x_star, y_star)
+            v0 = model.v0_pred_fn(params, t_star[num_time_steps], x_star, y_star)
+            h0 = model.h0_pred_fn(params, t_star[num_time_steps], x_star, y_star)
 
             del model, state, params
 

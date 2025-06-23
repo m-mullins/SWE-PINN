@@ -2,7 +2,7 @@
 #SBATCH --gres=gpu:1        # total number of GPUs
 #SBATCH --cpus-per-task=1   # 
 #SBATCH --mem=16G           # host memory per CPU core (node)
-#SBATCH --time=0-06:00      # time (DD-HH:MM)
+#SBATCH --time=0-08:00      # time (DD-HH:MM)
 #SBATCH --account=def-soulaima
 #SBATCH --job-name=swe
 #SBATCH --output=outfiles/swe.out
